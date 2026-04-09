@@ -66,7 +66,7 @@ const storeMeta = {
 };
 
 const defaultData = {
-  sellers: [{ username: 'LimbPL', displayName: 'LimbPL', createdAt: new Date().toISOString() }],
+  sellers: [],
   supportAgents: [],
   categories: [
     { id: 1, store: 'tripshop', name: 'Футболки', slug: 'tshirts', createdBy: 'system' },
@@ -96,6 +96,62 @@ function isOwner(username) {
 }
 function isAdmin(username) {
   return isOwner(username) || ADMIN_USERNAMES.includes(normalizeUsername(username));
+}
+function slugify(value) {
+  const base = String(value || '').trim().toLowerCase()
+    .replace(/[а-яё]/gi, (ch) => ({ а:'a',б:'b',в:'v',г:'g',д:'d',е:'e',ё:'e',ж:'zh',з:'z',и:'i',й:'y',к:'k',л:'l',м:'m',н:'n',о:'o',п:'p',р:'r',с:'s',т:'t',у:'u',ф:'f',х:'h',ц:'c',ч:'ch',ш:'sh',щ:'sch',ъ:'',ы:'y',ь:'',э:'e',ю:'yu',я:'ya' })[ch.toLowerCase()] || '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return base || crypto.randomUUID().slice(0, 8);
+}
+function normalizeSellerContact(raw) {
+  const value = String(raw || '').trim();
+  if (!value) return '';
+  if (/^https?:\/\/t\.me\//i.test(value)) return value;
+  if (/^t\.me\//i.test(value)) return 'https://' + value;
+  if (/^@/.test(value)) return 'https://t.me/' + value.slice(1);
+  return value;
+}
+function cleanImages(existingGallery = [], uploaded = []) {
+  return [...existingGallery.filter(Boolean), ...uploaded.filter(Boolean)].slice(0, 10);
+}
+function safeBadges(list) {
+  return (Array.isArray(list) ? list : []).map((v) => String(v).trim()).filter(Boolean).slice(0, 3);
+}
+function hydrateData(data) {
+  data.sellers ||= [];
+  data.supportAgents ||= [];
+  data.products ||= [];
+  data.categories ||= [];
+  data.supportTickets ||= [];
+  data.lastIds ||= { category: 0, product: 0, ticket: 0, message: 0 };
+  data.lastIds.ticket ||= 0;
+  data.lastIds.message ||= 0;
+  return data;
+}
+async function readData() {
+  ensureDataFile();
+  return hydrateData(JSON.parse(await fsp.readFile(dataFile, 'utf8')));
+}
+async function writeData(data) {
+  await fsp.writeFile(dataFile, JSON.stringify(hydrateData(data), null, 2), 'utf8');
+}
+async function listSellers() {
+  const data = await readData();
+  const local = Array.isArray(data.sellers) ? data.sellers : [];
+  const envOnly = SELLER_USERNAMES.map((username) => ({ username, displayName: username }));
+  const map = new Map([...local, ...envOnly].map((item) => [normalizeUsername(item.username), item]));
+  return Array.from(map.values());
+}
+async function listSupportAgents() {
+  const data = await readData();
+  const local = Array.isArray(data.supportAgents) ? data.supportAgents : [];
+  const envMap = new Map(SUPPORT_USERNAMES.map((username) => [normalizeUsername(username), { username, displayName: username }]));
+  for (const item of local) {
+    const u = normalizeUsername(item.username);
+    if (envMap.has(u)) envMap.set(u, { ...envMap.get(u), ...item });
+  }
+  return Array.from(envMap.values());
 }
 async function isSeller(username) {
   const u = normalizeUsername(username);
@@ -166,7 +222,8 @@ let supportBotInstance = null;
 let mainBotInstance = null;
 async function notifySupportAgents(ticket) {
   if (!supportBotInstance) return;
-  const agents = (await listSupportAgents()).filter((agent) => agent.chatId);
+  const data = await readData();
+  const agents = (data.supportAgents || []).filter((agent) => agent.chatId && SUPPORT_USERNAMES.includes(normalizeUsername(agent.username)));
   for (const agent of agents) {
     try {
       await supportBotInstance.telegram.sendMessage(agent.chatId, supportMessageSummary(ticket), Markup.inlineKeyboard([
@@ -262,22 +319,24 @@ app.get('/api/seller/:username', async (req, res) => {
 app.get('/api/admin/roles', async (req, res) => {
   const by = normalizeUsername(req.query.by);
   if (!isAdmin(by)) return res.status(403).json({ error: 'Нет доступа' });
+  const support = await listSupportAgents();
+  const sellers = await listSellers();
   res.json({
     owners: OWNER_USERNAMES.map((username) => ({ username, displayName: username })),
     admins: ADMIN_USERNAMES.map((username) => ({ username, displayName: username })),
-    sellers: SELLER_USERNAMES.map((username) => ({ username, displayName: username })),
-    support: SUPPORT_USERNAMES.map((username) => ({ username, displayName: username }))
+    sellers: sellers.map((item) => ({ username: item.username, displayName: item.displayName || item.username, chatId: item.chatId || null })),
+    support: support.map((item) => ({ username: item.username, displayName: item.displayName || item.username, chatId: item.chatId || null }))
   });
 });
 app.post('/api/admin/roles', async (req, res) => {
   const by = normalizeUsername(req.body.by);
   if (!isAdmin(by)) return res.status(403).json({ error: 'Нет доступа' });
-  res.status(400).json({ error: 'Роли теперь задаются через Environment: OWNER_USERNAMES, ADMIN_USERNAMES, SUPPORT_USERNAMES, SELLER_USERNAMES' });
+  res.status(400).json({ error: 'Роли now задаются через Environment: OWNER_USERNAMES, ADMIN_USERNAMES, SUPPORT_USERNAMES, SELLER_USERNAMES' });
 });
 app.delete('/api/admin/roles', async (req, res) => {
   const by = normalizeUsername(req.query.by);
   if (!isAdmin(by)) return res.status(403).json({ error: 'Нет доступа' });
-  res.status(400).json({ error: 'Роли теперь задаются через Environment: OWNER_USERNAMES, ADMIN_USERNAMES, SUPPORT_USERNAMES, SELLER_USERNAMES' });
+  res.status(400).json({ error: 'Роли now задаются через Environment: OWNER_USERNAMES, ADMIN_USERNAMES, SUPPORT_USERNAMES, SELLER_USERNAMES' });
 });
 app.post('/api/categories', async (req, res) => {
   const { store, name, slug, by } = req.body || {};
@@ -294,96 +353,95 @@ app.post('/api/categories', async (req, res) => {
 });
 app.post('/api/products', async (req, res) => {
   const body = req.body || {};
-  const username = normalizeUsername(body.by || body.username || body.sellerUsername);
+  const username = normalizeUsername(body.by);
   if (!(await isSeller(username))) return res.status(403).json({ error: 'Нет прав продавца' });
 
+  const store = String(body.store || '').trim();
   const data = await readData();
-  const store = String(body.store || '').trim().toLowerCase();
-  const categorySlug = String(body.categorySlug || '').trim();
-  if (!storeMeta[store]) return res.status(400).json({ error: 'Неверный магазин' });
-
-  const title = String(body.title || '').trim();
-  const shortDescription = String(body.shortDescription || '').trim();
-  const fullDescription = String(body.fullDescription || '').trim();
-  const sellerContact = normalizeSellerContact(body.sellerContact || '');
-  const sellerLabel = String(body.sellerLabel || ('@' + username)).trim();
-  const badges = safeBadges(body.badges || []);
-  const price = Number(body.price || 0);
+  const categorySlug = String(body.category_slug || '').trim();
+  if (!storeMeta[store] || !data.categories.some((c) => c.store === store && c.slug === categorySlug)) {
+    return res.status(400).json({ error: 'Категория не найдена' });
+  }
 
   const rawLinks = []
     .concat(body.mainImage || [])
     .concat(body.gallery || [])
     .concat(body.imageLinks || [])
     .concat(body.images || []);
+
   const imageLinks = rawLinks
     .flatMap((v) => String(v || '').split(/\r?\n|,/))
     .map((v) => String(v).trim())
     .filter((v) => /^https?:\/\//i.test(v))
     .slice(0, 10);
-?
-|,/))
+
+  if (!imageLinks.length) return res.status(400).json({ error: 'Укажи хотя бы одну ссылку на фото' });
+
+  const slug = slugify(body.slug || body.title);
+  if (data.products.some((p) => p.store === store && p.slug === slug)) return res.status(400).json({ error: 'Такой slug уже занят' });
+
+  data.lastIds.product += 1;
+  const product = {
+    id: data.lastIds.product,
+    store,
+    categorySlug,
+    title: String(body.title || '').trim(),
+    slug,
+    shortDescription: String(body.short_description || '').trim(),
+    fullDescription: String(body.full_description || '').trim(),
+    price: Number(body.price || 0),
+    sellerUsername: username,
+    sellerContact: normalizeSellerContact(body.seller_contact),
+    sellerLabel: String(body.seller_label || '').trim() || `@${username}`,
+    mainImage: imageLinks[0] || '',
+    gallery: imageLinks,
+    badges: safeBadges(JSON.parse(body.badges || '[]')),
+    type: 'link-image',
+    createdAt: new Date().toISOString()
+  };
+  data.products.push(product);
+  await writeData(data);
+  const channelPost = await postProductToTelegramChannel(product);
+  res.json({ ok: true, product, channelPost });
+});
+app.put('/api/products/:id', async (req, res) => {
+  const id = Number(req.params.id);
+  const body = req.body || {};
+  const username = normalizeUsername(body.by);
+  const data = await readData();
+  const product = data.products.find((item) => item.id === id);
+  if (!product) return res.status(404).json({ error: 'Товар не найден' });
+  if (!(isOwner(username) || isAdmin(username) || normalizeUsername(product.sellerUsername) === username)) {
+    return res.status(403).json({ error: 'Нет доступа' });
+  }
+
+  const rawLinks = []
+    .concat(body.mainImage || product.mainImage || [])
+    .concat(body.gallery || [])
+    .concat(body.imageLinks || [])
+    .concat(body.images || []);
+
+  const imageLinks = rawLinks
+    .flatMap((v) => String(v || '').split(/\r?\n|,/))
     .map((v) => String(v).trim())
     .filter((v) => /^https?:\/\//i.test(v))
     .slice(0, 10);
 
-  if (!title) return res.status(400).json({ error: 'Укажи название товара' });
-  if (!categorySlug) return res.status(400).json({ error: 'Выбери категорию' });
-  if (!price || Number.isNaN(price)) return res.status(400).json({ error: 'Укажи цену' });
-  if (!sellerContact) return res.status(400).json({ error: 'Укажи контакт продавца' });
-  if (!imageLinks.length) return res.status(400).json({ error: 'Укажи хотя бы одну ссылку на фото' });
-
-  const incomingSlug = slugify(body.slug || title);
-  const existingIndex = data.products.findIndex((item) => item.slug === incomingSlug || item.id === Number(body.id || 0));
-  let product;
-
-  if (existingIndex >= 0) {
-    const existing = data.products[existingIndex];
-    if (!isOwner(username) && !isAdmin(username) && normalizeUsername(existing.sellerUsername) !== username) {
-      return res.status(403).json({ error: 'Нет доступа к редактированию чужого товара' });
-    }
-    product = {
-      ...existing,
-      store,
-      categorySlug,
-      title,
-      shortDescription,
-      fullDescription,
-      price,
-      sellerUsername: username,
-      sellerContact,
-      sellerLabel,
-      mainImage: imageLinks[0],
-      gallery: imageLinks,
-      badges,
-      type: 'link-image',
-      updatedAt: new Date().toISOString()
-    };
-    data.products[existingIndex] = product;
-  } else {
-    data.lastIds.product += 1;
-    product = {
-      id: data.lastIds.product,
-      store,
-      categorySlug,
-      title,
-      slug: incomingSlug,
-      shortDescription,
-      fullDescription,
-      price,
-      sellerUsername: username,
-      sellerContact,
-      sellerLabel,
-      mainImage: imageLinks[0],
-      gallery: imageLinks,
-      badges,
-      type: 'link-image',
-      createdAt: new Date().toISOString()
-    };
-    data.products.push(product);
-  }
-
+  Object.assign(product, {
+    title: String(body.title || product.title).trim(),
+    shortDescription: String(body.short_description || product.shortDescription).trim(),
+    fullDescription: String(body.full_description || product.fullDescription).trim(),
+    price: Number(body.price ?? product.price),
+    sellerContact: normalizeSellerContact(body.seller_contact || product.sellerContact),
+    sellerLabel: String(body.seller_label || product.sellerLabel).trim(),
+    categorySlug: String(body.category_slug || product.categorySlug).trim(),
+    slug: slugify(body.slug || product.slug || product.title),
+    badges: safeBadges(JSON.parse(body.badges || JSON.stringify(product.badges || []))),
+    gallery: imageLinks.length ? imageLinks : (product.gallery || []),
+    mainImage: imageLinks[0] || product.mainImage,
+    type: 'link-image'
+  });
   await writeData(data);
-  await postProductToTelegramChannel(product);
   res.json({ ok: true, product });
 });
 app.delete('/api/products/:id', async (req, res) => {
@@ -392,7 +450,7 @@ app.delete('/api/products/:id', async (req, res) => {
   const data = await readData();
   const product = data.products.find((item) => item.id === id);
   if (!product) return res.status(404).json({ error: 'Товар не найден' });
-  if (!(isAdmin(username) || normalizeUsername(product.sellerUsername) === username)) return res.status(403).json({ error: 'Нет доступа' });
+  if (!(isOwner(username) || isAdmin(username) || normalizeUsername(product.sellerUsername) === username)) return res.status(403).json({ error: 'Нет доступа' });
   data.products = data.products.filter((item) => item.id !== id);
   await writeData(data);
   res.json({ ok: true });
@@ -404,7 +462,7 @@ app.post('/api/products/:id/publish', async (req, res) => {
   const data = await readData();
   const product = data.products.find((item) => item.id === id);
   if (!product) return res.status(404).json({ error: 'Товар не найден' });
-  if (!(isAdmin(username) || normalizeUsername(product.sellerUsername) === username)) return res.status(403).json({ error: 'Нет доступа' });
+  if (!(isOwner(username) || isAdmin(username) || normalizeUsername(product.sellerUsername) === username)) return res.status(403).json({ error: 'Нет доступа' });
   const result = await postProductToTelegramChannel(product);
   if (!result.ok) return res.status(400).json({ error: result.reason || result.error || 'Не удалось опубликовать товар' });
   res.json({ ok: true });
@@ -560,7 +618,7 @@ if (BOT_TOKEN) {
   });
   bot.command('role', async (ctx) => {
     if (!isAdmin(ctx.from?.username)) return ctx.reply('Нет доступа.');
-    await ctx.reply('Роли теперь задаются через Environment: OWNER_USERNAMES, ADMIN_USERNAMES, SUPPORT_USERNAMES, SELLER_USERNAMES');
+    await ctx.reply('Роли задаются через Environment: OWNER_USERNAMES, ADMIN_USERNAMES, SUPPORT_USERNAMES, SELLER_USERNAMES');
   });
   bot.command('unrole', async (ctx) => {
     if (!isAdmin(ctx.from?.username)) return ctx.reply('Нет доступа.');
@@ -573,8 +631,7 @@ if (BOT_TOKEN) {
       `Админы: ${ADMIN_USERNAMES.length ? ADMIN_USERNAMES.map((u) => '@' + u).join(', ') : 'нет'}`,
       `Продавцы: ${SELLER_USERNAMES.length ? SELLER_USERNAMES.map((u) => '@' + u).join(', ') : 'нет'}`,
       `Поддержка: ${SUPPORT_USERNAMES.length ? SUPPORT_USERNAMES.map((u) => '@' + u).join(', ') : 'нет'}`
-    ].join('
-'));
+    ].join('\n'));
   });
 
   bot.action('admin_menu', async (ctx) => {
@@ -634,7 +691,7 @@ if (SUPPORT_BOT_TOKEN) {
   supportBotInstance = supportBot;
   supportBot.start(async (ctx) => {
     const uname = normalizeUsername(ctx.from?.username);
-    if (!(await isSupport(uname))) return ctx.reply('У тебя нет роли техподдержки. Сначала добавь username в SUPPORT_USERNAMES на Render.');
+    if (!(await isSupport(uname))) return ctx.reply('У тебя нет роли техподдержки. Добавь username в SUPPORT_USERNAMES на Render.');
     const data = await readData();
     let record = data.supportAgents.find((item) => normalizeUsername(item.username) === uname);
     if (!record) {
