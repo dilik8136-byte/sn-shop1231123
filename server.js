@@ -316,10 +316,11 @@ app.post('/api/products', async (req, res) => {
     .concat(body.imageLinks || [])
     .concat(body.images || []);
 const imageLinks = rawLinks
-  .flatMap((v) => String(v || '').split(/\r?\n|,/))
-  .map((v) => String(v).trim())
-  .filter((v) => /^https?:\/\//i.test(v))
-  .slice(0, 10);?
+    .flatMap((v) => String(v || '').split(/\r?\n|,/))
+    .map((v) => String(v).trim())
+    .filter((v) => /^https?:\/\//i.test(v))
+    .slice(0, 10);
+?
 |,/))
     .map((v) => String(v).trim())
     .filter((v) => /^https?:\/\//i.test(v))
