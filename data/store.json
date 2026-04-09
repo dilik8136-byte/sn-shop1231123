@@ -1,0 +1,78 @@
+{
+  "sellers": [],
+  "categories": [
+    {
+      "id": 1,
+      "store": "tripshop",
+      "name": "Футболки",
+      "slug": "tshirts",
+      "createdBy": "system"
+    },
+    {
+      "id": 2,
+      "store": "tripshop",
+      "name": "Худи",
+      "slug": "hoodies",
+      "createdBy": "system"
+    },
+    {
+      "id": 3,
+      "store": "tripshop",
+      "name": "Штаны",
+      "slug": "pants",
+      "createdBy": "system"
+    },
+    {
+      "id": 4,
+      "store": "limbpl",
+      "name": "Плагины",
+      "slug": "plugins",
+      "createdBy": "system"
+    },
+    {
+      "id": 5,
+      "store": "limbpl",
+      "name": "Сборки",
+      "slug": "bundles",
+      "createdBy": "system"
+    },
+    {
+      "id": 6,
+      "store": "triptoys",
+      "name": "Мягкие игрушки",
+      "slug": "soft",
+      "createdBy": "system"
+    },
+    {
+      "id": 7,
+      "store": "triptoys",
+      "name": "Конструкторы",
+      "slug": "builders",
+      "createdBy": "system"
+    },
+    {
+      "id": 8,
+      "store": "tripchinashop",
+      "name": "Электроника",
+      "slug": "electronics",
+      "createdBy": "system"
+    },
+    {
+      "id": 9,
+      "store": "tripchinashop",
+      "name": "Одежда",
+      "slug": "china-fashion",
+      "createdBy": "system"
+    }
+  ],
+  "products": [],
+  "lastIds": {
+    "category": 0,
+    "product": 0,
+    "ticket": 0,
+    "message": 0
+  },
+  "supportAgents": [],
+  "supportTickets": [],
+  "supportMessages": []
+}

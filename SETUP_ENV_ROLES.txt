@@ -1,0 +1,28 @@
+SN Shop reset build
+
+Главное:
+1. Роли теперь задаются только через Render Environment:
+   OWNER_USERNAMES=LimbDDS
+   ADMIN_USERNAMES=
+   SUPPORT_USERNAMES=user1,user2
+   SELLER_USERNAMES=user3,user4
+
+2. Фото теперь только по ссылке.
+   Вставляй одну или несколько https:// ссылок на изображения.
+
+3. Все демо-товары и демо-заявки удалены.
+
+4. Для support-бота:
+   support user должен быть в SUPPORT_USERNAMES
+   и один раз нажать /start во втором боте.
+
+5. Для автопоста:
+   основной бот должен быть админом в канале
+   и должны быть заданы:
+   TRIPSHOP_CHANNEL_ID
+   LIMBPL_CHANNEL_ID
+   TRIPTOYS_CHANNEL_ID
+   TRIPCHINASHOP_CHANNEL_ID
+
+6. Если хочешь использовать таблицу ролей, она может остаться,
+   но текущая версия сайта берет seller/support из Environment.
