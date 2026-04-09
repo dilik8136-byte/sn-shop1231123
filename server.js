@@ -315,7 +315,7 @@ app.post('/api/products', async (req, res) => {
     .concat(body.gallery || [])
     .concat(body.imageLinks || [])
     .concat(body.images || []);
-const imageLinks = rawLinks
+  const imageLinks = rawLinks
     .flatMap((v) => String(v || '').split(/\r?\n|,/))
     .map((v) => String(v).trim())
     .filter((v) => /^https?:\/\//i.test(v))
